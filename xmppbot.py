@@ -89,14 +89,18 @@ class XMPPCassBot(muc.MUCClient):
     def my_jid(self):
         return self.parent.factory.authenticator.jid.full()
 
-    def initialized(self):
-        self.xmlstream.addObserver(muc.CHAT_BODY, self._onPrivateChat)
+    def connectionInitialized(self):
+        self.xmlstream.addObserver(muc.MESSAGE + '[@type="chat"]/body', self._onPrivateChat)
 
         prot = self.adapter_class(nickname=self.nickname.encode('utf-8'))
         prot.service = self.botservice
         prot.factory = self
         self.botservice.initialize_proto_state(prot)
-        prot.signedOn()
+
+        initial_presence = xmppim.AvailabilityPresence(status=self.availability_status)
+        d = self._sendDeferred(initial_presence)
+        d.addErrback(log.err, "failed to send initial presence")
+        d.addCallback(lambda _: prot.signedOn)
 
     def resetDelay(self):
         # dummy
@@ -109,18 +113,10 @@ class XMPPCassBot(muc.MUCClient):
         return muc.MUCClient.connectionLost(self, reason)
 
     def join(self, channel):
-        try:
-            room, server = channel.split('@', 1)
-        except ValueError:
-            room = channel
-            server = self.conference_server
-        try:
-            server, nick = server.split('/', 1)
-        except ValueError:
-            nick = self.nickname
-        d = muc.MUCClient.join(self, server, room, nick)
+        roomjid = jid.internJID(channel)
+        d = muc.MUCClient.join(self, roomjid, nick)
         d.addCallback(self._joinComplete)
-        d.addErrback(log.err, "Could not join %s" % (room,))
+        d.addErrback(log.err, "Could not join %s" % (channel,))
 
     def leave(self, channel, reason=None):
         occupantJID = jid.internJID(channel)
