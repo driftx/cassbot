@@ -817,8 +817,8 @@ def require_priv(privname):
         @wraps(f)
         def wrapper(self, bot, user, channel, args):
             if not bot.service.auth.userHas(user, privname):
-                return bot.address_msg(user, channel, 'command %s requires privilege %s'
-                                                      % (command_name, privname))
+                return bot.address_msg(user, channel, 'command %s requires privilege %s, which %s does not have'
+                                                      % (command_name, privname, user))
             return f(self, bot, user, channel, args)
         return wrapper
     return make_wrapper

@@ -32,6 +32,6 @@ fi
 
 [ -n "$pidfile" ] || pidfile="$defdir/cassbot.pid"
 
-export nickname channels server statefile autoload_modules auto_admin jid password jabber_server conference_server
+export nickname channels server statefile autoload_modules auto_admin auto_manhole jid password jabber_server conference_server
 
 exec "$twistd" $twistd_opts -y "$start_tap" --pidfile "$pidfile" $extra_opts

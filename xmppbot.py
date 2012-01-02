@@ -5,7 +5,7 @@ from twisted.words.xish import domish
 from twisted.internet import task, defer
 from twisted.python import log
 from wokkel.client import XMPPClient
-from wokkel import muc
+from wokkel import muc, xmppim
 import cassbot
 import types
 
@@ -80,6 +80,7 @@ class XMPPCassBot(muc.MUCClient):
     ping_interval = 120
     adapter_class = XMPPCassBotAdapter
     prot = None
+    availability_status = 'IM N UR HIPZ, CHATTING UR LINKS'
 
     def __init__(self, botservice, nickname='cassbot'):
         muc.MUCClient.__init__(self)
@@ -90,6 +91,7 @@ class XMPPCassBot(muc.MUCClient):
         return self.parent.factory.authenticator.jid.full()
 
     def connectionInitialized(self):
+        muc.MUCClient.connectionInitialized(self)
         self.xmlstream.addObserver(muc.MESSAGE + '[@type="chat"]/body', self._onPrivateChat)
 
         prot = self.adapter_class(nickname=self.nickname.encode('utf-8'))
@@ -98,9 +100,8 @@ class XMPPCassBot(muc.MUCClient):
         self.botservice.initialize_proto_state(prot)
 
         initial_presence = xmppim.AvailabilityPresence(status=self.availability_status)
-        d = self._sendDeferred(initial_presence)
-        d.addErrback(log.err, "failed to send initial presence")
-        d.addCallback(lambda _: prot.signedOn)
+        self.xmlstream.send(initial_presence.toElement())
+        prot.signedOn()
 
     def resetDelay(self):
         # dummy
@@ -113,7 +114,17 @@ class XMPPCassBot(muc.MUCClient):
         return muc.MUCClient.connectionLost(self, reason)
 
     def join(self, channel):
-        roomjid = jid.internJID(channel)
+        try:
+            room, server = channel.split('@', 1)
+        except ValueError:
+            room = channel
+            server = self.conference_server
+        try:
+            server, nick = server.split('/', 1)
+        except ValueError:
+            nick = self.nickname
+        roomjid = jid.JID(tuple=(channel, server, nick))
+        log.msg('Joining %r.' % roomjid)
         d = muc.MUCClient.join(self, roomjid, nick)
         d.addCallback(self._joinComplete)
         d.addErrback(log.err, "Could not join %s" % (channel,))
@@ -128,7 +139,7 @@ class XMPPCassBot(muc.MUCClient):
     def _joinComplete(self, room):
         userhost = room.occupantJID.userhost()
         d = defer.succeed(None)
-        if int(room.status) == muc.STATUS_CODE_CREATED:
+        if int(room.status) == 201:
             d.addCallback(lambda _: self.getConfigureForm(userhost))
             d.addCallback(lambda _: self.configure(userhost))
         d.addCallback(lambda _: self.prot.joined(self.room2chan(room)) if self.prot else None)
